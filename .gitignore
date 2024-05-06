@@ -1,0 +1,9 @@
+/target
+*.DS_Store
+demo/node_modules/*
+client/node_modules/*
+certs/*.cert
+certs/*.key
+certs/*.req
+certs/*.srl
+certs/*.pub
