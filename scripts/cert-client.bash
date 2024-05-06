@@ -7,7 +7,7 @@ CERTS="$SCRIPT_DIR/../certs"
 mkdir -p "$CERTS"
 
 CMD="$1"
-
+# check cmd
 if [[ $CMD == "req" ]]
 then
   IDENTITY="$2"

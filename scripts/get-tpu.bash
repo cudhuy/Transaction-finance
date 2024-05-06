@@ -10,7 +10,7 @@ fi
 
 if ! [[ -f $1 ]]
 then
-  echo "File '$1' does not exist!"
+  echo "File $1 does not exist!"
   exit 1
 fi
 
@@ -25,6 +25,6 @@ TPU_ADDR=$(solana gossip --output json | jq -r '
 
 if [[ -z $TPU_ADDR ]]
 then
-  echo "Failed to get TPU address!"
+  echo "Failed to get a TPU address!"
   exit 1
 fi

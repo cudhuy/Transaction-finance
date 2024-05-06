@@ -7,7 +7,7 @@ CERTS="$SCRIPT_DIR/../certs"
 mkdir -p "$CERTS"
 
 CMD="$1"
-
+# check cmd
 if [[ $CMD == "ca" ]]
 then
   openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -keyout "$CERTS/ca.key" -out "$CERTS/ca.cert" -subj "/CN=Marinade"
