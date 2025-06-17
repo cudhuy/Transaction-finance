@@ -4,8 +4,7 @@ use crate::metrics;
 use base64::decode;
 use log::{error, info};
 use solana_client::{
-    connection_cache::{ConnectionCache, DEFAULT_TPU_CONNECTION_POOL_SIZE},
-    nonblocking::tpu_connection::TpuConnection,
+    connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_sdk::{signature::Keypair, transport::TransportError};
 use std::{net::IpAddr, sync::Arc};
@@ -19,13 +18,18 @@ pub struct QuicForwarder {
 
 impl QuicForwarder {
     pub fn new(identity: Option<Keypair>, tpu_addr: Option<IpAddr>, max_permits: usize) -> Self {
-        let mut connection_cache = ConnectionCache::new(DEFAULT_TPU_CONNECTION_POOL_SIZE);
-        if let (Some(identity), Some(tpu_addr)) = (identity, tpu_addr) {
-            if let Err(err) = connection_cache.update_client_certificate(&identity, tpu_addr) {
-                error!("Failed to update client certificate: {}", err);
-            }
-            info!("Updated QUIC certificate");
-        }
+        let cert_info = if let (Some(identity), Some(tpu_addr)) = (&identity, tpu_addr) {
+            Some((identity, tpu_addr))
+        } else {
+            None
+        };
+        let connection_cache = ConnectionCache::new_with_client_options(
+            "default connection cache",
+            2,
+            None,
+            cert_info,
+            None,
+        );
 
         Self {
             max_permits,
@@ -34,7 +38,7 @@ impl QuicForwarder {
         }
     }
 
-    fn spawn_transaction_forwarder(&self, transaction: Transaction, tpu: &String) {
+    fn spawn_transaction_forwarder(&self, source: String, transaction: Transaction, tpu: &String) {
         let tpu = tpu.clone();
         let throttle_parallel = self.throttle_parallel.clone();
         let connection_cache = self.connection_cache.clone();
@@ -52,28 +56,34 @@ impl QuicForwarder {
 
             info!("Tx {} -> {}", transaction.signature, &tpu);
             let conn = connection_cache.get_nonblocking_connection(&tpu);
-            let request_result = conn.send_wire_transaction(&wire_transaction).await;
-            Self::handle_send_result(request_result);
+            let request_result = conn.send_data(&wire_transaction).await;
+            Self::handle_send_result(source, request_result);
 
             drop(throttle_permit);
         });
     }
 
-    fn handle_send_result(result: Result<(), TransportError>) {
+    fn handle_send_result(source: String, result: Result<(), TransportError>) {
         if let Err(err) = result {
             error!("Failed to send the transaction: {}", err);
-            metrics::TX_FORWARD_FAILED_COUNT.inc();
+            metrics::TX_FORWARD_FAILED_COUNT
+                .with_label_values(&[source.as_str()])
+                .inc();
         } else {
-            metrics::TX_FORWARD_SUCCEEDED_COUNT.inc();
+            metrics::TX_FORWARD_SUCCEEDED_COUNT
+                .with_label_values(&[source.as_str()])
+                .inc();
         }
     }
 }
 
 impl Forwarder for QuicForwarder {
-    fn process(&self, transaction: Transaction) {
-        metrics::TX_RECEIVED_COUNT.inc();
+    fn process(&self, source: String, transaction: Transaction) {
+        metrics::TX_RECEIVED_COUNT
+            .with_label_values(&[source.as_str()])
+            .inc();
         for tpu in transaction.tpu.iter() {
-            self.spawn_transaction_forwarder(transaction.clone(), tpu);
+            self.spawn_transaction_forwarder(source.clone(), transaction.clone(), tpu);
         }
     }
 }
